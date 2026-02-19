@@ -1,0 +1,25 @@
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}",
+  "python.linting.enabled": true,
+  "python.linting.pylintEnabled": true,
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}",
+    "${workspaceFolder}/src"
+  ],
+  "python.analysis.include": [
+    "${workspaceFolder}"
+  ],
+  "python.pythonPath": "${workspaceFolder}",
+  "[python]": {
+    "editor.defaultFormatter": "ms-python.python",
+    "editor.formatOnSave": true,
+    "editor.rulers": [88, 100]
+  },
+  "python.analysis.typeCheckingMode": "basic",
+  "python.analysis.diagnosticMode": "openFilesOnly",
+  "pylance.analysis.typeCheckingMode": "basic",
+  "pylance.analysis.extraPaths": [
+    "${workspaceFolder}"
+  ]
+}
+

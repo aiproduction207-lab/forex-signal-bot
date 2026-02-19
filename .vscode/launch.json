@@ -1,0 +1,41 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python: Current File",
+      "type": "python",
+      "request": "launch",
+      "program": "${file}",
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
+      "name": "Python: Run Tests",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/test_trading_logic.py",
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
+      "name": "Python: Simple Test",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/simple_test.py",
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
+      "name": "Python: Signal Bot",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/signal_bot.py",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "env": {
+        "TELEGRAM_BOT_TOKEN": "your_token_here",
+        "ALPHAVANTAGE_API_KEY": "your_api_key_here"
+      }
+    }
+  ]
+}

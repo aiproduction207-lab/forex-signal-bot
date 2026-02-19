@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "forex-signal-bot"
+version = "1.0.0"
+description = "Telegram trading signal bot for Pocket Option OTC with rule-based technical analysis"
+authors = [{name = "Trading Bot", email = "bot@example.com"}]
+requires-python = ">=3.11"
+dependencies = [
+    "python-telegram-bot>=20.0",
+    "requests>=2.31.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["test_trading_logic.py"]
+python_files = ["test_*.py"]
+
+[tool.pylint]
+disable = ["C0111", "R0903"]
+
+[tool.pyright]
+include = ["."]
+pythonVersion = "3.11"
+pythonPlatform = "Windows"
+typeCheckingMode = "basic"
+reportMissingImports = false
+reportMissingTypeStubs = false
+reportUnusedImport = true
+reportGeneralTypeIssues = true

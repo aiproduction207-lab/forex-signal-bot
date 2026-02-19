@@ -1,0 +1,93 @@
+2026-01-07 03:32:34 [INFO] signal_bot: File logging enabled (signal_bot.log)
+2026-01-07 03:32:34 [ERROR] signal_bot: TELEGRAM_BOT_TOKEN (or TELEGRAM_TOKEN) environment variable is missing.
+2026-01-07 03:32:34 [WARNING] signal_bot: ALPHAVANTAGE_API_KEY environment variable is missing. Price fetching may fail.
+2026-01-07 03:32:34 [ERROR] signal_bot:    Set it with: export TELEGRAM_BOT_TOKEN='your_token_here'
+2026-01-07 03:32:34 [ERROR] signal_bot:    Or: export TELEGRAM_TOKEN='your_token_here'
+2026-01-07 03:32:56 [INFO] signal_bot: File logging enabled (signal_bot.log)
+2026-01-07 03:32:56 [WARNING] signal_bot: ALPHAVANTAGE_API_KEY environment variable is missing. Price fetching may fail.
+2026-01-07 03:33:23 [INFO] __main__: File logging enabled (signal_bot.log)
+2026-01-07 03:33:23 [WARNING] __main__: ALPHAVANTAGE_API_KEY environment variable is missing. Price fetching may fail.
+2026-01-07 03:33:23 [INFO] __main__: ============================================================
+2026-01-07 03:33:23 [INFO] __main__: Telegram Trading Signal Bot - Starting
+2026-01-07 03:33:23 [INFO] __main__: ============================================================
+2026-01-07 03:33:23 [INFO] __main__: API Key for Alpha Vantage: NOT SET
+2026-01-07 03:33:23 [INFO] __main__: Forex pairs: 9
+2026-01-07 03:33:23 [INFO] __main__: OTC pairs: 10
+2026-01-07 03:33:23 [INFO] __main__: API Timeouts: Primary=10s, Fallback=5s
+2026-01-07 03:34:02 [INFO] __main__: File logging enabled (signal_bot.log)
+2026-01-07 03:34:02 [WARNING] __main__: ALPHAVANTAGE_API_KEY environment variable is missing. Price fetching may fail.
+2026-01-07 03:34:02 [INFO] __main__: ============================================================
+2026-01-07 03:34:02 [INFO] __main__: Telegram Trading Signal Bot - Starting
+2026-01-07 03:34:02 [INFO] __main__: ============================================================
+2026-01-07 03:34:02 [INFO] __main__: API Key for Alpha Vantage: NOT SET
+2026-01-07 03:34:02 [INFO] __main__: Forex pairs: 9
+2026-01-07 03:34:02 [INFO] __main__: OTC pairs: 10
+2026-01-07 03:34:02 [INFO] __main__: API Timeouts: Primary=10s, Fallback=5s
+2026-01-07 03:34:08 [INFO] __main__: Telegram application builder initialized
+2026-01-07 03:34:08 [INFO] __main__: Registered command handlers: /start, /stop
+2026-01-07 03:34:08 [INFO] __main__: Registered callback handlers: pair selection, timeframe selection
+2026-01-07 03:34:08 [INFO] __main__: ============================================================
+2026-01-07 03:34:08 [INFO] __main__: Bot polling started. Listening for messages...
+2026-01-07 03:34:08 [INFO] __main__: Use Ctrl+C to stop the bot gracefully.
+2026-01-07 03:34:08 [INFO] __main__: ============================================================
+2026-01-07 03:34:12 [ERROR] __main__: Fatal error during polling
+Traceback (most recent call last):
+  File "C:\Users\user\AppData\Local\Programs\Python\Python311\Lib\site-packages\telegram\_bot.py", line 735, in initialize
+    await self.get_me()
+  File "C:\Users\user\AppData\Local\Programs\Python\Python311\Lib\site-packages\telegram\ext\_extbot.py", line 1697, in get_me
+    return await super().get_me(
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\user\AppData\Local\Programs\Python\Python311\Lib\site-packages\telegram\_bot.py", line 525, in decorator
+    result = await func(self, *args, **kwargs)  # skipcq: PYL-E1102
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\user\AppData\Local\Programs\Python\Python311\Lib\site-packages\telegram\_bot.py", line 775, in get_me
+    result = await self._post(
+             ^^^^^^^^^^^^^^^^^
+  File "C:\Users\user\AppData\Local\Programs\Python\Python311\Lib\site-packages\telegram\_bot.py", line 613, in _post
+    return await self._do_post(
+           ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\user\AppData\Local\Programs\Python\Python311\Lib\site-packages\telegram\ext\_extbot.py", line 340, in _do_post
+    return await super()._do_post(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\user\AppData\Local\Programs\Python\Python311\Lib\site-packages\telegram\_bot.py", line 641, in _do_post
+    return await request.post(
+           ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\user\AppData\Local\Programs\Python\Python311\Lib\site-packages\telegram\request\_baserequest.py", line 200, in post
+    result = await self._request_wrapper(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\user\AppData\Local\Programs\Python\Python311\Lib\site-packages\telegram\request\_baserequest.py", line 377, in _request_wrapper
+    raise InvalidToken(message)
+telegram.error.InvalidToken: Not Found
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\user\Documents\forex_signal_bot\signal_bot.py", line 815, in main
+    app.run_polling()
+  File "C:\Users\user\AppData\Local\Programs\Python\Python311\Lib\site-packages\telegram\ext\_application.py", line 818, in run_polling
+    return self.__run(
+           ^^^^^^^^^^^
+  File "C:\Users\user\AppData\Local\Programs\Python\Python311\Lib\site-packages\telegram\ext\_application.py", line 1006, in __run
+    raise exc
+  File "C:\Users\user\AppData\Local\Programs\Python\Python311\Lib\site-packages\telegram\ext\_application.py", line 995, in __run
+    loop.run_until_complete(self.initialize())
+  File "C:\Users\user\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 654, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\user\AppData\Local\Programs\Python\Python311\Lib\site-packages\telegram\ext\_application.py", line 477, in initialize
+    await self.bot.initialize()
+  File "C:\Users\user\AppData\Local\Programs\Python\Python311\Lib\site-packages\telegram\ext\_extbot.py", line 286, in initialize
+    await super().initialize()
+  File "C:\Users\user\AppData\Local\Programs\Python\Python311\Lib\site-packages\telegram\_bot.py", line 737, in initialize
+    raise InvalidToken(f"The token `{self._token}` was rejected by the server.") from exc
+telegram.error.InvalidToken: The token `test_token` was rejected by the server.
+2026-01-07 03:34:12 [INFO] __main__: ============================================================
+2026-01-07 03:34:12 [INFO] __main__: Bot shutting down.
+2026-01-07 03:34:12 [INFO] __main__: ============================================================
+2026-01-07 03:34:12 [INFO] __main__: Final user sessions stored: 0
+2026-01-07 06:11:07 [INFO] signal_bot: File logging enabled (signal_bot.log)
+2026-01-07 06:11:08 [ERROR] signal_bot: [FATAL] TELEGRAM_BOT_TOKEN environment variable is not set
+2026-01-07 06:11:08 [ERROR] signal_bot:    Set it with: export TELEGRAM_BOT_TOKEN='your_token_here'
+2026-01-07 06:11:08 [ERROR] signal_bot:    Or: export TELEGRAM_TOKEN='your_token_here'
+2026-01-07 06:11:21 [INFO] signal_bot: File logging enabled (signal_bot.log)
+2026-01-07 06:12:22 [INFO] signal_bot: File logging enabled (signal_bot.log)
