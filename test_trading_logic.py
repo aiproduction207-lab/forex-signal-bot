@@ -35,12 +35,12 @@ def test_ultra_short_oversold():
     print("TEST 1: Ultra-Short Timeframe - Oversold Bounce (15s)")
     print("█"*60)
     print("\nScenario:")
-    print("- Pair: EURUSD")
+    print("- Pair: CAD/JPY")
     print("- Timeframe: 15s")
     print("- Market dropped fast → RSI very low (mean reversion setup)")
     print("- Medium volatility allows quick reversal")
     
-    signal = generate_trading_signal("EURUSD", "15s", 1.0840)
+    signal = generate_trading_signal("CAD/JPY", "15s", 90.20)
     print_signal(signal)
     assert signal.action in [SignalAction.BUY, SignalAction.WAIT], "Should BUY or WAIT"
 
@@ -51,13 +51,13 @@ def test_short_uptrend_pullback():
     print("TEST 2: Short Timeframe - Uptrend with Pullback (5m)")
     print("█"*60)
     print("\nScenario:")
-    print("- Pair: GBPUSD")
+    print("- Pair: GBP/JPY")
     print("- Timeframe: 5m")
     print("- Clear uptrend (SMA separation)")
     print("- Price pulls back to SMA (entry opportunity)")
     print("- Moderate volatility (safe entry)")
     
-    signal = generate_trading_signal("GBPUSD", "5m", 1.2750)
+    signal = generate_trading_signal("GBP/JPY", "5m", 190.00)
     print_signal(signal)
     assert signal.action in [SignalAction.BUY, SignalAction.WAIT], "Should BUY or WAIT"
 
@@ -68,13 +68,13 @@ def test_flat_market_no_trade():
     print("TEST 3: Flat Market - NO TRADE Condition (1m)")
     print("█"*60)
     print("\nScenario:")
-    print("- Pair: USDJPY")
+    print("- Pair: EUR/GBP")
     print("- Timeframe: 1m")
     print("- Market trading sideways")
     print("- Low volatility (ATR < 0.2%)")
     print("- No clear trend (SMA flat)")
     
-    signal = generate_trading_signal("USDJPY", "1m", 145.30)
+    signal = generate_trading_signal("EUR/GBP", "1m", 0.8580)
     print_signal(signal)
     assert signal.action == SignalAction.WAIT, "Should WAIT in flat market"
 
@@ -85,13 +85,13 @@ def test_extreme_volatility():
     print("TEST 4: Extreme Volatility - NO TRADE for Safety (3m)")
     print("█"*60)
     print("\nScenario:")
-    print("- Pair: XAUUSD (Gold - volatile)")
+    print("- Pair: USD/CNH (volatile proxy)")
     print("- Timeframe: 3m")
     print("- News event caused volatility spike")
     print("- ATR > 0.5% (risky, unstable)")
     print("- Market unpredictable")
     
-    signal = generate_trading_signal("XAUUSD", "3m", 2050.00)
+    signal = generate_trading_signal("USD/CNH", "3m", 7.14)
     print_signal(signal)
     assert signal.action == SignalAction.WAIT, "Should WAIT in high volatility"
 
@@ -102,13 +102,13 @@ def test_strong_downtrend():
     print("TEST 5: Strong Downtrend - Continuation SELL (3m)")
     print("█"*60)
     print("\nScenario:")
-    print("- Pair: AUDUSD")
+    print("- Pair: AUD/CAD")
     print("- Timeframe: 3m")
     print("- Clear downtrend established")
     print("- RSI showing bearish momentum")
     print("- Medium volatility (safe to trade)")
     
-    signal = generate_trading_signal("AUDUSD", "3m", 0.6540)
+    signal = generate_trading_signal("AUD/CAD", "3m", 0.9120)
     print_signal(signal)
     assert signal.action in [SignalAction.SELL, SignalAction.WAIT], "Should SELL or WAIT"
 
@@ -119,12 +119,12 @@ def test_five_second_timeframe():
     print("TEST 6: Extreme Short Timeframe - 5 Second Scalp")
     print("█"*60)
     print("\nScenario:")
-    print("- Pair: XAGUSD (Silver)")
+    print("- Pair: AUD/JPY (demo)")
     print("- Timeframe: 5s")
     print("- Need high volatility (small movements)")
     print("- Mean reversion strategy (oversold/overbought)")
     
-    signal = generate_trading_signal("XAGUSD", "5s", 31.50)
+    signal = generate_trading_signal("AUD/JPY", "5s", 105.70)
     print_signal(signal)
     # 5s can be BUY, SELL, or WAIT depending on simulated market
 
@@ -135,13 +135,13 @@ def test_overbought_bearish():
     print("TEST 7: Overbought with Bearish Momentum - Strong SELL (10s)")
     print("█"*60)
     print("\nScenario:")
-    print("- Pair: EURUSD (demo)")
+    print("- Pair: CAD/JPY (demo)")
     print("- Timeframe: 10s")
     print("- RSI > 65 (overbought)")
     print("- Momentum turning bearish")
     print("- High volatility expected")
     
-    signal = generate_trading_signal("EURUSD", "10s", 1.0900)
+    signal = generate_trading_signal("CAD/JPY", "10s", 90.30)
     print_signal(signal)
     assert signal.action in [SignalAction.SELL, SignalAction.WAIT], "Should SELL or WAIT"
 
@@ -153,8 +153,8 @@ def test_all_timeframes():
     print("█"*60)
     
     timeframes = ["5s", "10s", "15s", "30s", "1m", "3m", "5m"]
-    pair = "EURUSD"
-    price = 1.0850
+    pair = "EUR/JPY"
+    price = 162.50
     
     print(f"\nGenerating signals for {pair} at {price}")
     print(f"{'Timeframe':<10} {'Action':<8} {'Confidence':<12} {'Summary':<40}")
@@ -182,9 +182,9 @@ def test_invalid_inputs():
     
     test_cases = [
         ("", "5m", 1.0850, "Empty pair"),
-        ("EURUSD", "1h", 1.0850, "Invalid timeframe"),
-        ("EURUSD", "5m", -1.0850, "Negative price"),
-        ("EURUSD", "5m", 0, "Zero price"),
+        ("CAD/JPY", "2h", 90.00, "Invalid timeframe"),
+        ("CAD/JPY", "5m", -1.0850, "Negative price"),
+        ("CAD/JPY", "5m", 0, "Zero price"),
     ]
     
     for pair, tf, price, description in test_cases:
@@ -202,7 +202,7 @@ def test_consistent_output():
     print("TEST 10: Output Format Consistency")
     print("█"*60)
     
-    signal = generate_trading_signal("EURUSD", "5m", 1.0850)
+    signal = generate_trading_signal("EUR/JPY", "5m", 162.50)
     
     # Check all required fields exist
     print(f"\nChecking signal completeness:")

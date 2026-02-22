@@ -19,8 +19,9 @@ import asyncio
 import logging
 import os
 import sys
-from typing import Optional, Dict
+from typing import Optional, Dict, List, Tuple
 import random
+from datetime import datetime
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
@@ -53,11 +54,38 @@ handler.setFormatter(
 logger.addHandler(handler)
 
 # Configuration
-FOREX_PAIRS = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "EURJPY", "GBPJPY"]
-OTC_PAIRS = ["XAUUSD", "XAGUSD", "BTCUSD", "ETHUSD"]
-ALL_PAIRS = FOREX_PAIRS + OTC_PAIRS
+# pairs used during normal market hours (7am-5pm local time)
+NORMAL_PAIRS = [
+    "BTCUSD",
+    "CAD/JPY",
+    "GBP/JPY",
+    "EUR/CAD",
+    "EUR/USD",
+    "USD/JPY",
+    "GBP/AUD",
+    "GBP/USD",
+    "AUD/JPY",
+    "EUR/GBP",
+    "EUR/JPY",
+    "USD/CNH",
+    "AUD/CHF",
+    "AUD/CAD",
+    # note: EUR/JPY listed twice in original requirements but deduped here
+]
 
-TIMEFRAMES = ["5s", "10s", "15s", "30s", "1m", "3m", "5m"]
+# OTC pairs simply append " OTC" to each normal pair when active
+# (list generated dynamically)
+
+# timeframes available depending on mode
+TIMEFRAMES_NORMAL = ["1m", "3m", "5m", "10m", "15m", "30m", "1h"]  # 15m or higher allowed
+TIMEFRAMES_OTC = ["5s", "10s", "15s", "30s", "1m", "3m", "5m"]
+
+# the union is used by validation later
+VALID_TIMEFRAMES = set(TIMEFRAMES_NORMAL + TIMEFRAMES_OTC + ["5s", "10s", "15s", "30s"])  # include all possible
+
+# global state for market mode (NORMAL or OTC)
+MARKET_MODE: Optional[str] = None
+
 
 # User session state
 user_sessions: Dict = {}
@@ -66,18 +94,57 @@ user_sessions: Dict = {}
 random.seed(42)
 
 MARKET_PRICES = {
-    "EURUSD": 1.0850,
-    "GBPUSD": 1.2650,
-    "USDJPY": 149.50,
-    "AUDUSD": 0.6750,
-    "USDCAD": 1.3450,
-    "EURJPY": 162.50,
-    "GBPJPY": 189.75,
-    "XAUUSD": 2050.00,
-    "XAGUSD": 24.50,
-    "BTCUSD": 42500.00,
-    "ETHUSD": 2250.00,
+    # normal pairs (arbitrary sample prices)
+    "BTCUSD": 30000.0,
+    "CAD/JPY": 90.25,
+    "GBP/JPY": 190.50,
+    "EUR/CAD": 1.4450,
+    "EUR/USD": 1.0850,
+    "USD/JPY": 149.50,
+    "GBP/AUD": 1.8000,
+    "GBP/USD": 1.2650,
+    "AUD/JPY": 105.75,
+    "EUR/GBP": 0.8580,
+    "EUR/JPY": 162.50,
+    "USD/CNH": 7.1400,
+    "AUD/CHF": 0.6675,
+    "AUD/CAD": 0.9100,
 }
+
+# Add OTC variants only for forex pairs (pairs containing '/')
+for p, price in list(MARKET_PRICES.items()):
+    if "/" in p:
+        MARKET_PRICES[p + " OTC"] = price
+ 
+
+
+def is_market_hours() -> bool:
+    """Return True if current local time is within normal market hours.
+
+    Normal hours are 07:00 (inclusive) to 17:00 (exclusive) local server time.
+    Outside that window the bot will run in OTC mode.
+    """
+    now = datetime.now()
+    return 7 <= now.hour < 17
+
+
+def get_active_pairs() -> Tuple[List[str], str]:
+    """Return the list of pairs currently active and a string describing the mode.
+
+    The mode is either "NORMAL" or "OTC".
+    """
+    if is_market_hours():
+        return NORMAL_PAIRS, "NORMAL"
+    else:
+        # append OTC suffix to forex pairs only (leave BTCUSD unchanged)
+        otc_pairs = [p if "/" not in p else p + " OTC" for p in NORMAL_PAIRS]
+        return otc_pairs, "OTC"
+
+
+def get_active_timeframes() -> List[str]:
+    """Return the list of valid timeframes for the current mode."""
+    return TIMEFRAMES_NORMAL if is_market_hours() else TIMEFRAMES_OTC
+
 
 
 def get_current_price(pair: str) -> float:
@@ -126,45 +193,58 @@ def format_signal_message(signal) -> str:
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Show pair selection menu."""
+    """Show pair selection menu based on current market mode."""
     user_id = update.effective_user.id
     user_sessions[user_id] = {}
     
+    active_pairs, mode = get_active_pairs()
+    badge = "🟢 NORMAL" if mode == "NORMAL" else "🟠 OTC"
+
     keyboard = []
-    for i in range(0, len(ALL_PAIRS), 2):
-        row = [InlineKeyboardButton(ALL_PAIRS[i], callback_data=f"pair_{ALL_PAIRS[i]}")]
-        if i + 1 < len(ALL_PAIRS):
-            row.append(InlineKeyboardButton(ALL_PAIRS[i+1], callback_data=f"pair_{ALL_PAIRS[i+1]}"))
+    for i in range(0, len(active_pairs), 2):
+        row = [InlineKeyboardButton(active_pairs[i], callback_data=f"pair_{active_pairs[i]}")]
+        if i + 1 < len(active_pairs):
+            row.append(InlineKeyboardButton(active_pairs[i+1], callback_data=f"pair_{active_pairs[i+1]}"))
         keyboard.append(row)
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await update.message.reply_text(
-        "📈 *Trading Signal Bot*\n\nSelect a trading pair:\n━━━━━━━━━━━━━━━━━",
+        f"📈 *Trading Signal Bot* ({badge})\n\nSelect a trading pair:\n━━━━━━━━━━━━━━━━━",
         reply_markup=reply_markup,
         parse_mode=ParseMode.MARKDOWN
     )
 
 
 async def pair_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle pair selection."""
+    """Handle pair selection and validate against current mode."""
     query = update.callback_query
     await query.answer()
     
     user_id = update.effective_user.id
     pair = query.data.replace("pair_", "")
-    
+
+    # re-fetch active pairs in case mode changed while user was interacting
+    active_pairs, mode = get_active_pairs()
+    if pair not in active_pairs:
+        await query.edit_message_text(
+            "⚠️ Selected pair is no longer available for the current market mode. Please use /start to refresh.",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
+
     if user_id not in user_sessions:
         user_sessions[user_id] = {}
     user_sessions[user_id]["pair"] = pair
     
-    # Show timeframe buttons
+    # Show timeframe buttons for current mode
+    tfs = get_active_timeframes()
     keyboard = []
-    for i in range(0, len(TIMEFRAMES), 3):
+    for i in range(0, len(tfs), 3):
         row = []
         for j in range(3):
-            if i + j < len(TIMEFRAMES):
-                tf = TIMEFRAMES[i + j]
+            if i + j < len(tfs):
+                tf = tfs[i + j]
                 row.append(InlineKeyboardButton(tf, callback_data=f"tf_{tf}"))
         keyboard.append(row)
     
@@ -178,7 +258,7 @@ async def pair_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def timeframe_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle timeframe selection and generate signal."""
+    """Handle timeframe selection, validate current mode, and generate signal."""
     query = update.callback_query
     await query.answer()
     
@@ -189,6 +269,17 @@ async def timeframe_selection(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     timeframe = query.data.replace("tf_", "")
     pair = user_sessions[user_id]["pair"]
+
+    # validate that pair/timeframe still valid for current mode
+    active_pairs, mode = get_active_pairs()
+    active_tfs = get_active_timeframes()
+    if pair not in active_pairs or timeframe not in active_tfs:
+        await query.edit_message_text(
+            "⚠️ Market mode changed while you were selecting. Please /start again to get updated pairs/timeframes.",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
+
     current_price = get_current_price(pair)
     
     await query.edit_message_text(
@@ -245,6 +336,22 @@ def build_application(token: str):
     """Build and configure the Telegram bot application."""
     app = ApplicationBuilder().token(token).build()
     
+    # initialize market mode state
+    global MARKET_MODE
+    MARKET_MODE = "NORMAL" if is_market_hours() else "OTC"
+    logger.info("Initial market mode: %s", MARKET_MODE)
+
+    # schedule periodic check to update mode and log switches
+    def market_mode_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+        global MARKET_MODE
+        new_mode = "NORMAL" if is_market_hours() else "OTC"
+        if new_mode != MARKET_MODE:
+            MARKET_MODE = new_mode
+            logger.info("Market mode switched to %s", MARKET_MODE)
+
+    # first run after a few seconds to catch startup boundary
+    app.job_queue.run_repeating(market_mode_job, interval=30, first=5)
+
     # Commands
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))

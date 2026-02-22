@@ -20,6 +20,7 @@
   "pylance.analysis.typeCheckingMode": "basic",
   "pylance.analysis.extraPaths": [
     "${workspaceFolder}"
-  ]
+  ],
+  "python-envs.defaultEnvManager": "ms-python.python:system"
 }
 

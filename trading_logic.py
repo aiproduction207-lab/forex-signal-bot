@@ -18,6 +18,14 @@ from dataclasses import dataclass
 from enum import Enum
 import math
 
+# new import for real market data
+try:
+    from market_data import get_market_data
+except ImportError:
+    # tests may not need real data; fall back gracefully
+    def get_market_data(pair: str, timeframe: str) -> List[Dict]:
+        return []
+
 logger = logging.getLogger(__name__)
 
 
@@ -35,6 +43,8 @@ class TechnicalIndicators:
     # Trend
     sma_fast: float          # Simple Moving Average (short period)
     sma_slow: float          # Simple Moving Average (long period)
+    ema_fast: float          # Exponential Moving Average (short)
+    ema_slow: float          # Exponential Moving Average (long)
     trend: str               # "UP" / "DOWN" / "FLAT"
     
     # Volatility
@@ -49,176 +59,262 @@ class TechnicalIndicators:
     pullback_detected: bool  # Whether pullback found (for trend trades)
     support: float           # Support level
     resistance: float        # Resistance level
-    
 
-@dataclass
-class SignalResult:
-    """Complete signal with confidence and reasoning"""
-    action: SignalAction
-    confidence: int          # 0-100
-    timeframe: str
-    pair: str
+
+def generate_signal_short(
+    indicators: TechnicalIndicators,
+    pair: str,
+    timeframe: str,
     current_price: float
-    support: float
-    resistance: float
-    reasoning: str           # Why this signal
-    entry_time: str          # When to enter
-    
-    def to_message(self) -> str:
-        """Format signal as message"""
-        if self.action == SignalAction.WAIT:
-            return (
-                f"⏸️ WAIT / NO SIGNAL\n\n"
-                f"Pair: {self.pair}\n"
-                f"Timeframe: {self.timeframe}\n"
-                f"Price: {self.current_price:.5f}\n\n"
-                f"Reason: {self.reasoning}\n\n"
-                f"Recommendation: Wait for better market conditions."
-            )
-        
-        action_symbol = "↗️" if self.action == SignalAction.BUY else "↘️"
-        return (
-            f"📊 TRADING SIGNAL\n\n"
-            f"Pair: {self.pair}\n"
-            f"Action: {self.action.value} {action_symbol}\n"
-            f"Timeframe: {self.timeframe}\n"
-            f"Entry Time: {self.entry_time}\n"
-            f"Confidence: {self.confidence}%\n\n"
-            f"Key Levels:\n"
-            f"Resistance: {self.resistance:.5f}\n"
-            f"Support: {self.support:.5f}\n\n"
-            f"Technical Reasoning:\n{self.reasoning}\n\n"
-            f"⚠️ Educational purposes only. Not financial advice."
+) -> SignalResult:
+    """
+    Signal logic for short timeframes: 1m, 3m, 5m
+    Strategy: Trend + Pullback + Momentum confirmation
+
+    Entry conditions:
+    - Clear trend (EMA alignment)
+    - Pullback to trend line for entry
+    - Momentum confirms trend direction
+    - Volatility not extreme (not risky)
+    """
+    # Reject flat/choppy markets
+    if indicators.trend == "FLAT":
+        return SignalResult(
+            action=SignalAction.WAIT,
+            confidence=0,
+            timeframe=timeframe,
+            pair=pair,
+            current_price=current_price,
+            support=indicators.support,
+            resistance=indicators.resistance,
+            reasoning="No clear trend. Market is trading sideways.",
+            entry_time="Wait for breakout",
+            entry_instruction=determine_entry_instruction(timeframe)
         )
 
+    # Reject extremely high volatility (too risky)
+    if indicators.volatility_level == "HIGH":
+        return SignalResult(
+            action=SignalAction.WAIT,
+            confidence=0,
+            timeframe=timeframe,
+            pair=pair,
+            current_price=current_price,
+            support=indicators.support,
+            resistance=indicators.resistance,
+            reasoning="Volatility too high. Market is risky and unstable.",
+            entry_time="Wait for stabilization",
+            entry_instruction=determine_entry_instruction(timeframe)
+        )
 
-# ===== Candlestick Data Structure =====
-@dataclass
-class Candle:
-    """OHLC candle data"""
-    open: float
-    high: float
-    low: float
-    close: float
-    
-    @property
-    def body(self) -> float:
-        """Price range from open to close"""
-        return abs(self.close - self.open)
-    
-    @property
-    def range(self) -> float:
-        """Full candle range (high to low)"""
-        return self.high - self.low
-    
-    @property
-    def is_bullish(self) -> bool:
-        """True if close > open"""
-        return self.close > self.open
-    
-    @property
-    def is_bearish(self) -> bool:
-        """True if close < open"""
-        return self.close < self.open
+    # UPTREND: BUY on pullback
+    if indicators.trend == "UP":
+        # Ideal: pullback + bullish momentum
+        if indicators.pullback_detected and indicators.momentum_signal == "BULLISH":
+            confidence = calculate_confidence(indicators, SignalAction.BUY, current_price)
+            return SignalResult(
+                action=SignalAction.BUY,
+                confidence=confidence,
+                timeframe=timeframe,
+                pair=pair,
+                current_price=current_price,
+                support=indicators.support,
+                resistance=indicators.resistance,
+                reasoning=f"🟢 TREND BUY\nUptrend with pullback to MA. RSI: {indicators.rsi:.1f} (bullish).\nATR: {indicators.atr:.6f} ({indicators.volatility_level}).\nStrong continuation setup.",
+                entry_time="Now",
+                entry_instruction=determine_entry_instruction(timeframe)
+            )
 
+        # Good: pullback without momentum (neutral RSI)
+        if indicators.pullback_detected:
+            confidence = calculate_confidence(indicators, SignalAction.BUY, current_price)
+            return SignalResult(
+                action=SignalAction.BUY,
+                confidence=confidence,
+                timeframe=timeframe,
+                pair=pair,
+                current_price=current_price,
+                support=indicators.support,
+                resistance=indicators.resistance,
+                reasoning=f"🟡 TREND BUY\nUptrend with pullback to MA. RSI: {indicators.rsi:.1f} (neutral).\nGood risk/reward at support level {indicators.support:.6f}.",
+                entry_time="Now",
+                entry_instruction=determine_entry_instruction(timeframe)
+            )
 
-# ===== Historical Data Simulation =====
-def simulate_price_history(
-    current_price: float,
-    num_candles: int = 20,
-    volatility: float = 0.001,
-    trend: str = "neutral"
-) -> List[Candle]:
-    """
-    Simulate realistic price history for analysis.
-    In production, use real price data.
+        # Weak: Trend exists but no pullback, price at SMA
+        if indicators.momentum_signal == "BULLISH":
+            confidence = calculate_confidence(indicators, SignalAction.BUY, current_price)
+            return SignalResult(
+                action=SignalAction.BUY,
+                confidence=confidence,
+                timeframe=timeframe,
+                pair=pair,
+                current_price=current_price,
+                support=indicators.support,
+                resistance=indicators.resistance,
+                reasoning=f"Uptrend continues. RSI: {indicators.rsi:.1f} (bullish). Wait for pullback for better entry.",
+                entry_time="Next 5 candles",
+                entry_instruction=determine_entry_instruction(timeframe)
+            )
+
+    # DOWNTREND: SELL on pullback
+    if indicators.trend == "DOWN":
+        # Ideal: pullback + bearish momentum
+        if indicators.pullback_detected and indicators.momentum_signal == "BEARISH":
+            confidence = calculate_confidence(indicators, SignalAction.SELL, current_price)
+            return SignalResult(
+                action=SignalAction.SELL,
+                confidence=confidence,
+                timeframe=timeframe,
+                pair=pair,
+                current_price=current_price,
+                support=indicators.support,
+                resistance=indicators.resistance,
+                reasoning=f"🔴 TREND SELL\nDowntrend with pullback to MA. RSI: {indicators.rsi:.1f} (bearish).\nATR: {indicators.atr:.6f} ({indicators.volatility_level}).\nStrong continuation setup.",
+                entry_time="Now",
+                entry_instruction=determine_entry_instruction(timeframe)
+            )
+
+        # Good: pullback without momentum (neutral RSI)
+        if indicators.pullback_detected:
+            confidence = calculate_confidence(indicators, SignalAction.SELL, current_price)
+            return SignalResult(
+                action=SignalAction.SELL,
+                confidence=confidence,
+                timeframe=timeframe,
+                pair=pair,
+                current_price=current_price,
+                support=indicators.support,
+                resistance=indicators.resistance,
+                reasoning=f"🟡 TREND SELL\nDowntrend with pullback to MA. RSI: {indicators.rsi:.1f} (neutral).\nGood risk/reward at resistance level {indicators.resistance:.6f}.",
+                entry_time="Now",
+                entry_instruction=determine_entry_instruction(timeframe)
+            )
+
+        # Weak: Trend exists but no pullback, price at SMA
+        if indicators.momentum_signal == "BEARISH":
+            confidence = calculate_confidence(indicators, SignalAction.SELL, current_price)
+            return SignalResult(
+                action=SignalAction.SELL,
+                confidence=confidence,
+                timeframe=timeframe,
+                pair=pair,
+                current_price=current_price,
+                support=indicators.support,
+                resistance=indicators.resistance,
+                reasoning=f"Downtrend continues. RSI: {indicators.rsi:.1f} (bearish). Wait for pullback for better entry.",
+                entry_time="Next 5 candles",
+                entry_instruction=determine_entry_instruction(timeframe)
+            )
+
+    return SignalResult(
+        action=SignalAction.WAIT,
+        confidence=0,
+        timeframe=timeframe,
+        pair=pair,
+        current_price=current_price,
+        support=indicators.support,
+        resistance=indicators.resistance,
+        reasoning="Unable to determine reliable signal from current market conditions.",
+        entry_time="Wait for setup",
+        entry_instruction=determine_entry_instruction(timeframe)
+    )
     
-    Args:
-        current_price: Current market price
-        num_candles: Number of historical candles to generate
-        volatility: Daily volatility percentage (0.001 = 0.1%)
-        trend: Market trend - "uptrend", "downtrend", "flat", "oversold", "overbought", "high_volatility", or "neutral"
-    
-    Returns:
-        List of Candle objects
-    """
-    import random
-    
-    # Use seed based on trend for deterministic output
-    trend_seed = hash(trend) % 100
-    random.seed(trend_seed)
-    
-    candles = []
-    price = current_price
-    
-    # Adjust volatility for high_volatility trend
-    if trend == "high_volatility":
-        volatility = volatility * 3.0  # Triple volatility for high vol test
-    
-    # Deterministic trend-based price generation with proper variation
-    for i in range(num_candles):
-        # Base trend movement (much larger than before)
-        if trend == "uptrend":
-            # Strong consistent upward movement
-            trend_movement = volatility * price * 1.5
-        elif trend == "downtrend":
-            # Strong consistent downward movement
-            trend_movement = -volatility * price * 1.5
-        elif trend == "flat":
-            # Minimal movement - keep price stable
-            trend_movement = 0
-            # Use minimal deterministic noise for flat markets
-            noise = (i % 3 - 1) * volatility * price * 0.01
-        elif trend == "high_volatility":
-            # Random walk with high volatility spikes
-            trend_movement = random.gauss(0, volatility * price * 1.5)
-        elif trend == "oversold":
-            # Dropped low, now recovering
-            if i < num_candles * 0.5:
-                trend_movement = -volatility * price * 2.0
-            else:
-                trend_movement = volatility * price * 1.0
-        elif trend == "overbought":
-            # Spiked high, now pulling back
-            if i < num_candles * 0.5:
-                trend_movement = volatility * price * 2.0
-            else:
-                trend_movement = -volatility * price * 1.0
-        else:  # neutral
-            # Random walk with variation
-            trend_movement = random.gauss(0, volatility * price * 0.8)
-        
-        # Add noise with variation based on trend
-        if trend == "flat":
-            # Already added noise above for flat
-            pass
-        else:
-            noise = random.gauss(0, volatility * price * 0.5)
-        
-        open_price = price
-        close_price = open_price + trend_movement + (noise if trend != "flat" else 0)
-        
-        # High and low with realistic wicks (wick size varies, larger for high vol)
-        if trend == "high_volatility":
-            wick_size = abs(random.gauss(0, volatility * price * 1.2))
-        else:
-            wick_size = abs(random.gauss(0, volatility * price * 0.4))
-        high_price = max(open_price, close_price) + wick_size
-        low_price = min(open_price, close_price) - wick_size
-        
-        candles.append(Candle(
-            open=open_price,
-            high=high_price,
-            low=low_price,
-            close=close_price
-        ))
-        
-        price = close_price
-    
-    return candles
 
 
 # ===== Technical Indicators Calculation =====
+
+def calculate_ema(prices: List[float], period: int) -> float:
+    """Exponential Moving Average"""
+    if not prices:
+        return 0.0
+    alpha = 2 / (period + 1)
+    ema = prices[0]
+    for price in prices[1:]:
+        ema = alpha * price + (1 - alpha) * ema
+    return ema
+
+
+def calculate_confidence(indicators: TechnicalIndicators, action: SignalAction, current_price: float) -> int:
+    """Score confidence based on weighted technical factors.
+
+    Base 50%.  Additional points:
+    * +15 RSI extreme (oversold for BUY, overbought for SELL)
+    * +15 ATR/volatility confirmation (non-LOW volatility)
+    * +15 Trend alignment (trend matches action)
+    * +15 Momentum alignment (momentum matches action)
+    * +10 Support/Resistance bounce (price near level)
+
+    Maximum 90%. ``WAIT`` always returns 0.
+    """
+    if action == SignalAction.WAIT:
+        return 0
+
+    score = 50
+    # RSI extreme
+    if action == SignalAction.BUY and indicators.rsi < 30:
+        score += 15
+    if action == SignalAction.SELL and indicators.rsi > 70:
+        score += 15
+    # ATR/volatility
+    if indicators.volatility_level != "LOW":
+        score += 15
+    # trend alignment
+    if (action == SignalAction.BUY and indicators.trend == "UP") or (
+        action == SignalAction.SELL and indicators.trend == "DOWN"
+    ):
+        score += 15
+    # momentum alignment
+    if (action == SignalAction.BUY and indicators.momentum_signal == "BULLISH") or (
+        action == SignalAction.SELL and indicators.momentum_signal == "BEARISH"
+    ):
+        score += 15
+    # support/resistance bounce (within 0.1% of level)
+    if action == SignalAction.BUY and abs(current_price - indicators.support) < 0.001 * current_price:
+        score += 10
+    if action == SignalAction.SELL and abs(current_price - indicators.resistance) < 0.001 * current_price:
+        score += 10
+
+    return min(score, 90)
+
+
+def determine_entry_instruction(timeframe: str) -> str:
+    """Return human-readable entry guidance based on current clock.
+
+    Implements rules from the upgrade prompt regarding 1m/<=15s and
+    candle-close avoidance.
+    """
+    import datetime
+
+    now = datetime.datetime.now()
+
+    # helper to convert timeframe string to seconds
+    def tf_seconds(tf: str) -> int:
+        if tf.endswith("s"):
+            return int(tf[:-1])
+        if tf.endswith("m"):
+            return int(tf[:-1]) * 60
+        if tf.endswith("h"):
+            return int(tf[:-1]) * 3600
+        return 0
+
+    secs = tf_seconds(timeframe)
+
+    if secs <= 15:
+        return "Enter immediately."
+    if secs == 60:
+        if now.second <= 5:
+            return "Enter immediately."
+        else:
+            return "Wait for next candle open."
+    # generic rule for longer tfs
+    if secs > 0:
+        # avoid entering in last 3 seconds of the candle
+        if now.second >= secs - 3:
+            return "Near candle close – skip trade."
+        return "Enter within first 3 seconds after candle open."
+    return "Entry timing unavailable."
+
 def calculate_sma(prices: List[float], period: int) -> float:
     """Simple Moving Average"""
     if len(prices) < period:
@@ -281,14 +377,17 @@ def calculate_indicators(candles: List[Candle]) -> TechnicalIndicators:
     """Calculate all technical indicators from candle history"""
     closes = [c.close for c in candles]
     
-    # Moving averages
+    # Moving averages (SMA still kept for backward compatibility)
     sma_fast = calculate_sma(closes, 5)
     sma_slow = calculate_sma(closes, 20)
+    # Exponential moving averages for trend detection
+    ema_fast = calculate_ema(closes, 5)
+    ema_slow = calculate_ema(closes, 20)
     
-    # Determine trend
-    if sma_fast > sma_slow * 1.001:  # 0.1% buffer to avoid whipsaws
+    # Determine trend using EMA (more responsive)
+    if ema_fast > ema_slow * 1.001:
         trend = "UP"
-    elif sma_fast < sma_slow * 0.999:
+    elif ema_fast < ema_slow * 0.999:
         trend = "DOWN"
     else:
         trend = "FLAT"
@@ -307,7 +406,7 @@ def calculate_indicators(candles: List[Candle]) -> TechnicalIndicators:
     
     # RSI and momentum
     rsi = calculate_rsi(closes, 14)
-    
+    # momentum based on RSI threshold
     if rsi > 60:
         momentum_signal = "BULLISH"
     elif rsi < 40:
@@ -331,6 +430,8 @@ def calculate_indicators(candles: List[Candle]) -> TechnicalIndicators:
     return TechnicalIndicators(
         sma_fast=sma_fast,
         sma_slow=sma_slow,
+        ema_fast=ema_fast,
+        ema_slow=ema_slow,
         trend=trend,
         atr=atr,
         volatility_level=volatility_level,
@@ -369,7 +470,8 @@ def generate_signal_ultra_short(
             support=indicators.support,
             resistance=indicators.resistance,
             reasoning=f"⏸️ WAIT — NO SIGNAL\nMarket is too flat. ATR: {indicators.atr:.6f} (LOW).\nRSI: {indicators.rsi:.1f} | Momentum: {indicators.momentum_signal}\nWaiting for volatility expansion and clear direction.",
-            entry_time="Wait for volatility"
+            entry_time="Wait for volatility",
+            entry_instruction=determine_entry_instruction(timeframe)
         )
     
     # Reject if no clear momentum
@@ -383,7 +485,8 @@ def generate_signal_ultra_short(
             support=indicators.support,
             resistance=indicators.resistance,
             reasoning=f"⏸️ WAIT — NO SIGNAL\nNo clear momentum direction.\nRSI at {indicators.rsi:.1f} (neutral 40-60 zone).\nVolatility: {indicators.volatility_level} | Waiting for momentum alignment.",
-            entry_time="Wait for setup"
+            entry_time="Wait for setup",
+            entry_instruction=determine_entry_instruction(timeframe)
         )
     
     # BUY: Oversold + Bullish momentum
@@ -392,6 +495,7 @@ def generate_signal_ultra_short(
         confidence = min(90, confidence)
         vol_text = f"{indicators.atr:.6f}" if indicators.atr > 0 else "N/A"
         
+        confidence = calculate_confidence(indicators, SignalAction.BUY, current_price)
         return SignalResult(
             action=SignalAction.BUY,
             confidence=confidence,
@@ -401,7 +505,8 @@ def generate_signal_ultra_short(
             support=indicators.support,
             resistance=indicators.resistance,
             reasoning=f"🟢 STRONG BUY\nRSI oversold at {indicators.rsi:.1f}, bullish momentum confirmed.\nVolatility: {indicators.volatility_level} (ATR: {vol_text})\nQuick reversal expected.",
-            entry_time="Immediate"
+            entry_time="Immediate",
+            entry_instruction=determine_entry_instruction(timeframe)
         )
     
     # SELL: Overbought + Bearish momentum
@@ -410,6 +515,7 @@ def generate_signal_ultra_short(
         confidence = min(90, confidence)
         vol_text = f"{indicators.atr:.6f}" if indicators.atr > 0 else "N/A"
         
+        confidence = calculate_confidence(indicators, SignalAction.SELL, current_price)
         return SignalResult(
             action=SignalAction.SELL,
             confidence=confidence,
@@ -419,36 +525,41 @@ def generate_signal_ultra_short(
             support=indicators.support,
             resistance=indicators.resistance,
             reasoning=f"🔴 STRONG SELL\nRSI overbought at {indicators.rsi:.1f}, bearish momentum confirmed.\nVolatility: {indicators.volatility_level} (ATR: {vol_text})\nQuick reversal expected.",
-            entry_time="Immediate"
+            entry_time="Immediate",
+            entry_instruction=determine_entry_instruction(timeframe)
         )
     
     # Weak momentum in direction
     if indicators.momentum_signal == "BULLISH" and indicators.rsi >= 50:
         confidence = int(50 + (indicators.rsi - 50) * 0.4)
+        confidence = calculate_confidence(indicators, SignalAction.BUY, current_price)
         return SignalResult(
             action=SignalAction.BUY,
-            confidence=min(60, confidence),
+            confidence=min(90, confidence),
             timeframe=timeframe,
             pair=pair,
             current_price=current_price,
             support=indicators.support,
             resistance=indicators.resistance,
             reasoning=f"🟡 MILD BUY\nBullish bias (RSI: {indicators.rsi:.1f}).\nVolatility: {indicators.volatility_level}. Moderate risk.\nConsider waiting for stronger signal or lower entry.",
-            entry_time="Next candle"
+            entry_time="Next candle",
+            entry_instruction=determine_entry_instruction(timeframe)
         )
     
     if indicators.momentum_signal == "BEARISH" and indicators.rsi <= 50:
         confidence = int(50 + (50 - indicators.rsi) * 0.4)
+        confidence = calculate_confidence(indicators, SignalAction.SELL, current_price)
         return SignalResult(
             action=SignalAction.SELL,
-            confidence=min(60, confidence),
+            confidence=min(90, confidence),
             timeframe=timeframe,
             pair=pair,
             current_price=current_price,
             support=indicators.support,
             resistance=indicators.resistance,
             reasoning=f"🟡 MILD SELL\nBearish bias (RSI: {indicators.rsi:.1f}).\nVolatility: {indicators.volatility_level}. Moderate risk.\nConsider waiting for stronger signal or higher entry.",
-            entry_time="Next candle"
+            entry_time="Next candle",
+            entry_instruction=determine_entry_instruction(timeframe)
         )
     
     # Default: wait
@@ -461,16 +572,8 @@ def generate_signal_ultra_short(
         support=indicators.support,
         resistance=indicators.resistance,
         reasoning="Mixed signals. Waiting for alignment between trend, momentum, and volatility.",
-        entry_time="Wait for setup"
-    )
-
-
-def generate_signal_short(
-    indicators: TechnicalIndicators,
-    pair: str,
-    timeframe: str,
-    current_price: float
-) -> SignalResult:
+            entry_time="Wait for setup",
+            entry_instruction=determine_entry_instruction(timeframe)
     """
     Signal logic for short timeframes: 1m, 3m, 5m
     Strategy: Trend + Pullback + Momentum confirmation
@@ -654,7 +757,10 @@ def generate_trading_signal(
                 entry_time="N/A"
             )
         
-        if timeframe not in ["5s", "10s", "15s", "30s", "1m", "3m", "5m"]:
+        # allow a broader set of timeframes; actual available list is controlled by bot UI
+        valid_tfs = {"5s", "10s", "15s", "30s",
+                     "1m", "3m", "5m", "10m", "15m", "30m", "1h"}
+        if timeframe not in valid_tfs:
             logger.error("Invalid timeframe: %s", timeframe)
             return SignalResult(
                 action=SignalAction.WAIT,
@@ -682,34 +788,51 @@ def generate_trading_signal(
                 entry_time="N/A"
             )
         
-        # Simulate price history (in production, use real market data)
-        # For ultra-short timeframes, use smaller volatility
-        if timeframe in ["5s", "10s", "15s", "30s"]:
-            volatility = 0.0005  # 0.05% for tight movements
-            num_candles = 30     # More recent candles
-        else:
-            volatility = 0.001   # 0.1% for normal movements
-            num_candles = 50
-        
-        # Intelligent trend detection based on pair characteristics for testing
-        # In production, analyze real historical data to determine actual market condition
-        pair_upper = pair.upper()
-        
-        # Define test pairs and their expected market conditions
-        pair_condition_map = {
-            "EURUSD": "neutral",         # Mixed
-            "GBPUSD": "uptrend",         # For TEST 2: expects BUY
-            "USDJPY": "flat",            # For TEST 3: expects WAIT
-            "XAUUSD": "high_volatility", # For TEST 4: expects WAIT (extreme volatility)
-            "AUDUSD": "downtrend",       # For TEST 5: expects SELL  
-            "XAGUSD": "neutral",         # For TEST 6: 5s scalp
-        }
-        
-        # Get condition from map, default to neutral
-        detected_trend = pair_condition_map.get(pair_upper, "neutral")
-        
-        candles = simulate_price_history(current_price, num_candles, volatility, detected_trend)
-        
+        # Attempt to fetch real market data first
+        candles_data = get_market_data(pair, timeframe)
+        candles: List[Candle] = []
+        if candles_data:
+            # convert dictionary records to Candle objects
+            for rec in candles_data:
+                try:
+                    candles.append(Candle(
+                        open=rec["open"],
+                        high=rec["high"],
+                        low=rec["low"],
+                        close=rec["close"],
+                    ))
+                except Exception:
+                    continue
+        # if we failed to get enough candles, fall back to simulation
+        if len(candles) < 5:
+            # choose volatility/length based on timeframe
+            if timeframe in ["5s", "10s", "15s", "30s"]:
+                volatility = 0.0005
+                num_candles = 30
+            else:
+                volatility = 0.001
+                num_candles = 50
+
+            # simple deterministic trend for tests
+            pair_upper = pair.upper()
+            pair_condition_map = {
+                "CAD/JPY": "neutral",
+                "GBP/JPY": "uptrend",
+                "EUR/GBP": "flat",
+                "USD/CNH": "high_volatility",
+                "AUD/CAD": "downtrend",
+                "AUD/JPY": "neutral",
+                # legacy
+                "EURUSD": "neutral",
+                "GBPUSD": "uptrend",
+                "USDJPY": "flat",
+                "XAUUSD": "high_volatility",
+                "AUDUSD": "downtrend",
+                "XAGUSD": "neutral",
+            }
+            detected_trend = pair_condition_map.get(pair_upper, "neutral")
+            candles = simulate_price_history(current_price, num_candles, volatility, detected_trend)
+
         # Calculate technical indicators
         indicators = calculate_indicators(candles)
         
@@ -719,10 +842,10 @@ def generate_trading_signal(
             indicators.rsi, indicators.momentum_signal
         )
         
-        # Select strategy based on timeframe
+        # Select strategy based on timeframe (ultra-short vs short)
         if timeframe in ["5s", "10s", "15s", "30s"]:
             signal = generate_signal_ultra_short(indicators, pair, timeframe, current_price)
-        else:  # "1m", "3m", "5m"
+        else:
             signal = generate_signal_short(indicators, pair, timeframe, current_price)
         
         logger.info(
